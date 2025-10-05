@@ -1,31 +1,22 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 commit=$(git rev-parse HEAD)
-patchfile="patch-${commit}.patch"
-applyscript="apply-${commit}.sh"
+outfile="apply-${commit}.sh"
 
-git format-patch -1 "$commit" -o . --stdout > "$patchfile"
+{
+  echo "#!/usr/bin/env bash"
+  echo "# Self-applying patch for commit $commit"
+  echo "set -euo pipefail"
+  echo "tmp=\$(mktemp)"
+  echo "trap 'rm -f \$tmp' EXIT"
+  echo "awk '/^__PATCH_BELOW__/ {found=1; next} found {print}' \"\$0\" >\"\$tmp\""
+  echo "echo '→ Applying patch from $commit'"
+  echo "git apply \"\$tmp\""
+  echo "exit \$?"
+  echo "__PATCH_BELOW__"
+  git format-patch -1 "$commit" --stdout
+} > "$outfile"
 
-cat > "$applyscript" <<EOF
-#!/usr/bin/env bash
-# This script applies the patch for commit $commit
-
-set -e
-patchfile="$patchfile"
-
-if [ ! -f "\$patchfile" ]; then
-  echo "Error: Patch file '\$patchfile' not found."
-  exit 1
-fi
-
-echo "Applying patch \$patchfile..."
-git apply "\$patchfile"
-echo "Patch applied successfully!"
-EOF
-
-chmod +x "$applyscript"
-
-echo "Created:"
-echo "  - $patchfile"
-echo "  - $applyscript"
+chmod +x "$outfile"
+echo "Created self-applying patch script: $outfile"
